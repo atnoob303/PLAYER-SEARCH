@@ -1,0 +1,125 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  #app { padding: 1.5rem 0; max-width: 480px; margin: 0 auto; }
+  h2 { font-size: 18px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px; }
+  .search-row { display: flex; gap: 8px; margin-bottom: 1.5rem; }
+  .search-row input { flex: 1; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem; }
+  .avatar { width: 80px; height: 80px; border-radius: 50%; border: 0.5px solid var(--color-border-tertiary); object-fit: cover; background: var(--color-background-secondary); }
+  .avatar-placeholder { width: 80px; height: 80px; border-radius: 50%; background: var(--color-background-secondary); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--color-text-tertiary); }
+  .info { flex: 1; }
+  .username { font-size: 18px; font-weight: 500; color: var(--color-text-primary); }
+  .display-name { font-size: 14px; color: var(--color-text-secondary); margin-top: 2px; }
+  .userid { font-size: 12px; color: var(--color-text-tertiary); margin-top: 6px; font-family: var(--font-mono); }
+  .meta { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .badge { font-size: 12px; padding: 3px 10px; border-radius: 20px; background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary); }
+  .badge.verified { background: #E6F1FB; color: #0C447C; border-color: #B5D4F4; }
+  .error { color: var(--color-text-danger); font-size: 14px; text-align: center; padding: 1rem 0; }
+  .status { font-size: 13px; color: var(--color-text-tertiary); text-align: center; padding: 1rem 0; }
+  .profile-link { display: inline-block; margin-top: 12px; font-size: 13px; color: var(--color-text-info); text-decoration: none; }
+  .profile-link:hover { text-decoration: underline; }
+  #results { margin-top: 0; }
+</style>
+
+<div id="app">
+  <h2>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+      <rect x="3" y="3" width="8" height="8" rx="2" fill="var(--color-text-primary)" opacity="0.8"/>
+      <rect x="13" y="3" width="8" height="8" rx="2" fill="var(--color-text-primary)" opacity="0.8"/>
+      <rect x="3" y="13" width="8" height="8" rx="2" fill="var(--color-text-primary)" opacity="0.8"/>
+      <rect x="13" y="13" width="8" height="8" rx="2" fill="var(--color-text-primary)" opacity="0.8"/>
+    </svg>
+    Tìm kiếm player Roblox
+  </h2>
+
+  <div class="search-row">
+    <input type="text" id="searchInput" placeholder="Nhập username..." />
+    <button id="searchBtn" onclick="searchPlayer()">Tìm</button>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+const input = document.getElementById('searchInput');
+const results = document.getElementById('results');
+
+input.addEventListener('keydown', e => { if (e.key === 'Enter') searchPlayer(); });
+
+async function searchPlayer() {
+  const username = input.value.trim();
+  if (!username) return;
+
+  results.innerHTML = '<p class="status">Đang tìm kiếm...</p>';
+
+  try {
+    const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
+    });
+
+    if (!res.ok) throw new Error('Lỗi kết nối Roblox API');
+    const data = await res.json();
+
+    if (!data.data || data.data.length === 0) {
+      results.innerHTML = '<p class="error">Không tìm thấy player với username này.</p>';
+      return;
+    }
+
+    const user = data.data[0];
+    await showProfile(user.id, user.name, user.displayName);
+
+  } catch (e) {
+    results.innerHTML = `<p class="error">Lỗi: ${e.message}<br><small style="color:var(--color-text-tertiary)">Roblox API có thể bị chặn CORS trong môi trường này.</small></p>`;
+    showFallback(username);
+  }
+}
+
+async function showProfile(userId, username, displayName) {
+  let avatarUrl = null;
+  try {
+    const thumbRes = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=150x150&format=Png&isCircular=false`);
+    const thumbData = await thumbRes.json();
+    if (thumbData.data && thumbData.data[0]) avatarUrl = thumbData.data[0].imageUrl;
+  } catch(_) {}
+
+  const avatarHtml = avatarUrl
+    ? `<img class="avatar" src="${avatarUrl}" alt="avatar" />`
+    : `<div class="avatar-placeholder">?</div>`;
+
+  const isDifferent = displayName && displayName !== username;
+
+  results.innerHTML = `
+    <div class="card">
+      <div style="display:flex; align-items:flex-start; gap:16px;">
+        ${avatarHtml}
+        <div class="info">
+          <div class="username">${escHtml(username)}</div>
+          ${isDifferent ? `<div class="display-name">${escHtml(displayName)}</div>` : ''}
+          <div class="userid">ID: ${userId}</div>
+          <div class="meta">
+            <span class="badge">Roblox Player</span>
+          </div>
+          <a class="profile-link" href="https://www.roblox.com/users/${userId}/profile" target="_blank">Xem profile trên Roblox →</a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function showFallback(username) {
+  results.innerHTML += `
+    <div class="card" style="margin-top: 12px; text-align: center;">
+      <p style="font-size:13px; color:var(--color-text-secondary); margin-bottom: 10px;">Thử tìm trực tiếp trên Roblox:</p>
+      <a href="https://www.roblox.com/search/users?keyword=${encodeURIComponent(username)}" target="_blank" style="font-size:14px; color: var(--color-text-info);">Tìm "${username}" trên Roblox.com →</a>
+    </div>
+  `;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
